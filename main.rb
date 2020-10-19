@@ -3,10 +3,15 @@ require 'aws-sdk-lambda'
 require 'tty-table'
 
 class AWS
-    def get_lambdas(lambda_client)
+    def get_lambdas(lambda_client, environment)
         lambda_client.list_functions().map do |response|
-            response.functions.map do |function|
-                function.function_name
+            response.functions.filter_map do |function|
+                tag_response = lambda_client.list_tags({resource: function.function_arn})
+                if (tag_response.tags['Project'] == 'moo-mfg' && tag_response.tags['Environment'] == environment)
+                    function.function_name
+                else
+                    nil
+                end
             end
         end.flatten
     end
@@ -26,19 +31,19 @@ class AWS
             begin
                 lambda_client.update_event_source_mapping({uuid: detail['UUID'], enabled: status})
             rescue
-                puts CLI::UI.fmt "{{red:Failed to update #{detail['ARN']}}}"
+                puts CLI::UI.fmt "{{red:Disabled}}"
             end
         end
     end
 
-    def display_current_status(lambda_client)
+    def display_current_status(lambda_client, environment)
         lambdas = []
         lambdas_with_mappings = {}
 
         # Display UI
-        CLI::UI::Frame.open('Status') do
+        CLI::UI::Frame.open("#{environment} Status") do
             sg = CLI::UI::SpinGroup.new
-            sg.add('Fetching Lambdas...') { |spinner| lambdas = AWS.new.get_lambdas(lambda_client); spinner.update_title('Fetched Lambdas'); }
+            sg.add('Fetching Lambdas...') { |spinner| lambdas = AWS.new.get_lambdas(lambda_client, environment); spinner.update_title('Fetched Lambdas'); }
             sg.wait
             sg = CLI::UI::SpinGroup.new
             sg.add('Fetching Event Mappings...') { |spinner| lambdas.each do |function_name|
@@ -67,8 +72,11 @@ CLI::UI::StdoutRouter.enable
 # Configure the AWS connection
 lambda_client = Aws::Lambda::Client.new
 
+# Get env
+environment = CLI::UI.ask('Environment?', default: 'dev')
+
 # Display UI
-lambdas_with_mappings = AWS.new.display_current_status(lambda_client)
+lambdas_with_mappings = AWS.new.display_current_status(lambda_client, environment)
 
 # Drop the items that have no mappings
 lambdas_with_mappings = lambdas_with_mappings.select {|k, v| v.length > 0 }
@@ -94,6 +102,6 @@ CLI::UI::Prompt.ask('Change Status?') do |handler|
                 puts CLI::UI.fmt "{{red:Disabled}}"
             }
         end
-        AWS.new.display_current_status(lambda_client);
+        AWS.new.display_current_status(lambda_client, environment);
     }
 end
