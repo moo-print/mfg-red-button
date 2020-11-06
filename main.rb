@@ -74,7 +74,9 @@ lambdas_with_mappings = AWS.new.display_current_status(lambda_client)
 lambdas_with_mappings = lambdas_with_mappings.select {|k, v| v.length > 0 }
 
 CLI::UI::Prompt.ask('Change Status?') do |handler|
-    handler.option('No')  { |selection| puts CLI::UI.fmt "{{green:Done}}" }
+    handler.option('No')  { |selection|
+        puts CLI::UI.fmt "{{green:Done}}"
+    }
     handler.option('Yes') { |selection|
         CLI::UI::Prompt.ask('New State?') do |handler|
             handler.option('Enable')  { |selection| 
